@@ -77,7 +77,9 @@ type (
 		// driver used for executing database requests.
 		driver dialect.Driver
 		// debug enable a debug logging.
-		debug func(dialect.Driver, ...func(...any)) dialect.Driver
+		debug bool
+	  // debugFn used for enabling debug logging on the driver.
+	  debugFn func(dialect.Driver,...func(...any)) dialect.Driver
 		// log used for logging on debug mode.
 		log func(...any)
 		// hooks to execute on mutations.
@@ -103,7 +105,7 @@ type (
 
 // newConfig creates a new config for the client.
 func newConfig(opts ...Option) config {
-	cfg := config{log: log.Println, hooks: &hooks{}, inters: &inters{}}
+	cfg := config{log: log.Println, debugFn: dialect.Debug, hooks: &hooks{}, inters: &inters{}}
 	{{- with $tmpls := matchTemplate "config/init/fields/*" }}
 		{{- range $tmpl := $tmpls }}
 			{{- xtemplate $tmpl $ }}
@@ -118,22 +120,23 @@ func (c *config) options(opts ...Option) {
 	for _, opt := range opts {
 		opt(c)
 	}
-	if c.debug != nil {
-		c.driver = c.debug(c.driver, c.log)
+	if c.debug {
+		c.driver = c.debugFn(c.driver, c.log)
 	}
 }
 
 // Debug enables debug logging on the ent.Driver.
 func Debug() Option {
 	return func(c *config) {
-		c.debug = dialect.Debug
+		c.debug = true
+	  c.debugFn = dialect.Debug
 	}
 }
 
 // WithDebug configures the debug function.
 func WithDebug(fn func(dialect.Driver, ...func(...any)) dialect.Driver) Option {
 	return func(c *config) {
-		c.debug = fn
+		c.debugFn = fn
 	}
 }
 
@@ -212,11 +215,11 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 //		Count(ctx)
 //
 func (c *Client) Debug() *Client {
-	if c.debug != nil {
+	if c.debug {
 		return c
 	}
 	cfg := c.config
-	cfg.driver = c.debug(c.driver, c.log)
+	cfg.driver = cfg.debugFn(c.driver, c.log)
 	client := &Client{config: cfg}
 	client.init()
 	return client
